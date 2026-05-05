@@ -71,6 +71,15 @@ src/
     └── twilio.ts         # Twilio client
 ```
 
+## Notes
+
+### WhatsApp message length
+WhatsApp caps messages at 1600 characters. A school newsletter with 7+ events — each with a description and a Google Calendar URL — blows straight past that.
+
+The bot handles it by splitting the reply into multiple messages, each kept under 1500 characters. You'll get two or three messages back-to-back when there are a lot of events. The "Powered by FamilyBrief" footer only appears on the last one.
+
+No action needed from the user — it just works.
+
 ## Example conversation
 
 Parent sends a photo of a school letter.

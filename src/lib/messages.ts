@@ -9,9 +9,11 @@ const CATEGORY_EMOJI: Record<string, string> = {
   other: "📌",
 };
 
+/** WhatsApp's hard character limit per message. We target 1500 to leave headroom. */
 const MAX_CHARS = 1500;
 
-function buildEventBlock(event: ExtractedEvent, index: number): string {
+/** Build the formatted text block for a single event, including the calendar link. */
+const buildEventBlock = (event: ExtractedEvent, index: number): string => {
   const emoji = CATEGORY_EMOJI[event.category] || "📌";
   const calUrl = buildGoogleCalendarUrl(event);
   const dateStr = formatFriendlyDate(event);
@@ -25,9 +27,14 @@ function buildEventBlock(event: ExtractedEvent, index: number): string {
   lines.push(`   ➕ Add to Google Calendar:`);
   lines.push(`   ${calUrl}`);
   return lines.join("\n");
-}
+};
 
-export function buildReplyMessage(events: ExtractedEvent[]): string[] {
+/**
+ * Build one or more WhatsApp message chunks for the extracted event list.
+ * Splits into multiple messages when the total would exceed `MAX_CHARS`.
+ * The "Powered by FamilyBrief" footer is appended to the final chunk only.
+ */
+export const buildReplyMessage = (events: ExtractedEvent[]): string[] => {
   if (events.length === 0) {
     return [
       "I couldn't find any events or dates in that document 🤔\n" +
@@ -63,34 +70,31 @@ export function buildReplyMessage(events: ExtractedEvent[]): string[] {
   });
 
   return chunks;
-}
+};
 
-export function buildErrorMessage(): string {
-  return (
-    "Sorry, something went wrong reading that file 😕\n" +
-    "Please try again with a clearer photo or different file."
-  );
-}
+/** Generic error reply when Claude fails or returns nothing useful. */
+export const buildErrorMessage = (): string =>
+  "Sorry, something went wrong reading that file 😕\n" +
+  "Please try again with a clearer photo or different file.";
 
-export function buildNonMediaMessage(): string {
-  return (
-    "Hi! 👋 I'm the FamilyBrief bot.\n" +
-    "Send me any of these and I'll extract the dates and " +
-    "create Google Calendar links automatically:\n" +
-    "📸 *Photo* of a school letter\n" +
-    "🖼️ *Screenshot* of a school app or WhatsApp message\n" +
-    "📄 *PDF* attached to a school email\n" +
-    "Just send the file here!"
-  );
-}
+/** Help message sent when the user sends a text with no attachment. */
+export const buildNonMediaMessage = (): string =>
+  "Hi! 👋 I'm the FamilyBrief bot.\n" +
+  "Send me any of these and I'll extract the dates and " +
+  "create Google Calendar links automatically:\n" +
+  "📸 *Photo* of a school letter\n" +
+  "🖼️ *Screenshot* of a school app or WhatsApp message\n" +
+  "📄 *PDF* attached to a school email\n" +
+  "Just send the file here!";
 
-export function buildUnsupportedFileMessage(mediaType: string): string {
-  return (
-    `Sorry, I can't read that file type yet 😕\n` +
-    "I can handle:\n" +
-    "📸 Photos (JPG, PNG, WebP, HEIC)\n" +
-    "📄 PDF documents\n" +
-    "🖼️ Screenshots (PNG, JPG)\n" +
-    "Try sending one of those instead!"
-  );
-}
+/**
+ * Reply when the user sends a file type the bot can't handle.
+ * @param mediaType - The MIME type that was rejected.
+ */
+export const buildUnsupportedFileMessage = (_mediaType: string): string =>
+  "Sorry, I can't read that file type yet 😕\n" +
+  "I can handle:\n" +
+  "📸 Photos (JPG, PNG, WebP, HEIC)\n" +
+  "📄 PDF documents\n" +
+  "🖼️ Screenshots (PNG, JPG)\n" +
+  "Try sending one of those instead!";

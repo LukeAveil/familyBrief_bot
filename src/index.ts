@@ -2,7 +2,7 @@ import "dotenv/config";
 import crypto from "crypto";
 import express, { Request, Response } from "express";
 import { parseMediaToEvents } from "./lib/anthropic";
-import { sendWhatsAppMessage } from "./lib/twilio";
+import { downloadMedia, sendWhatsAppMessage } from "./lib/twilio";
 import {
   buildReplyMessage,
   buildErrorMessage,
@@ -61,13 +61,8 @@ app.post("/webhook", async (req: Request, res: Response) => {
       isPdf ? "Reading your PDF... ⏳" : "Reading your photo... ⏳"
     );
 
-    const result = await parseMediaToEvents(
-      mediaUrl,
-      mediaType,
-      process.env.TWILIO_ACCOUNT_SID!,
-      process.env.TWILIO_AUTH_TOKEN!,
-      reqId
-    );
+    const { base64, mediaType: confirmedType } = await downloadMedia(mediaUrl, reqId);
+    const result = await parseMediaToEvents(base64, confirmedType, reqId);
 
     if (result.error && result.events.length === 0) {
       log("WARN", "parse_failed", { reqId, error: result.error });
