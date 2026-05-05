@@ -9,39 +9,60 @@ const CATEGORY_EMOJI: Record<string, string> = {
   other: "📌",
 };
 
-export function buildReplyMessage(events: ExtractedEvent[]): string {
-if (events.length === 0) {
-  return (
-    "I couldn't find any events or dates in that document 🤔\n" +
-    "Try sending a clearer photo or a different file. " +
-    "Make sure the text is readable."
-  );
+const MAX_CHARS = 1500;
+
+function buildEventBlock(event: ExtractedEvent, index: number): string {
+  const emoji = CATEGORY_EMOJI[event.category] || "📌";
+  const calUrl = buildGoogleCalendarUrl(event);
+  const dateStr = formatFriendlyDate(event);
+
+  const lines = [
+    `${index}. ${emoji} *${event.title}*`,
+    `   📆 ${dateStr}`,
+  ];
+  if (event.location) lines.push(`   📍 ${event.location}`);
+  if (event.description) lines.push(`   ℹ️ ${event.description}`);
+  lines.push(`   ➕ Add to Google Calendar:`);
+  lines.push(`   ${calUrl}`);
+  return lines.join("\n");
 }
 
-const lines: string[] = [];
-lines.push(
-  events.length === 1
-    ? "Found 1 event! 📅\n"
-    : `Found ${events.length} events! 📅\n`
-);
+export function buildReplyMessage(events: ExtractedEvent[]): string[] {
+  if (events.length === 0) {
+    return [
+      "I couldn't find any events or dates in that document 🤔\n" +
+      "Try sending a clearer photo or a different file. " +
+      "Make sure the text is readable.",
+    ];
+  }
+
+  const header =
+    events.length === 1 ? "Found 1 event! 📅\n" : `Found ${events.length} events! 📅\n`;
+  const footer = "\n_Powered by FamilyBrief_ 🗓️";
+  const chunks: string[] = [];
+  let current = header;
 
   events.forEach((event, i) => {
-    const emoji = CATEGORY_EMOJI[event.category] || "📌";
-    const calUrl = buildGoogleCalendarUrl(event);
-    const dateStr = formatFriendlyDate(event);
+    const block = buildEventBlock(event, i + 1);
+    const separator = current === header ? "" : "\n\n";
+    const candidate = current + separator + block;
 
-    lines.push(`${i + 1}. ${emoji} *${event.title}*`);
-    lines.push(`   📆 ${dateStr}`);
-    if (event.location) lines.push(`   📍 ${event.location}`);
-    if (event.description) lines.push(`   ℹ️ ${event.description}`);
-    lines.push(`   ➕ Add to Google Calendar:`);
-    lines.push(`   ${calUrl}`);
-    if (i < events.length - 1) lines.push("");
+    const isLast = i === events.length - 1;
+    const withFooter = isLast ? candidate + footer : candidate;
+
+    if (withFooter.length > MAX_CHARS && current !== header) {
+      chunks.push(current);
+      current = block;
+    } else {
+      current = candidate;
+    }
+
+    if (isLast) {
+      chunks.push(current + footer);
+    }
   });
 
-lines.push("");
-lines.push("_Powered by FamilyBrief_ 🗓️");
-return lines.join("\n");
+  return chunks;
 }
 
 export function buildErrorMessage(): string {

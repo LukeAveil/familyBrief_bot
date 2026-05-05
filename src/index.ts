@@ -1,4 +1,5 @@
 import "dotenv/config";
+import crypto from "crypto";
 import express, { Request, Response } from "express";
 import { parseMediaToEvents } from "./lib/anthropic";
 import { sendWhatsAppMessage } from "./lib/twilio";
@@ -8,6 +9,7 @@ import {
   buildNonMediaMessage,
   buildUnsupportedFileMessage,
 } from "./lib/messages";
+import { log } from "./lib/logger";
 
 const app = express();
 app.use(express.urlencoded({ extended: false }));
@@ -27,53 +29,60 @@ app.post("/webhook", async (req: Request, res: Response) => {
   // Respond immediately — Twilio expects 200 within a few seconds
   res.status(200).send("<Response></Response>");
 
+  const reqId = crypto.randomUUID().slice(0, 8);
+
   try {
     const from: string = req.body.From;
     const numMedia = parseInt(req.body.NumMedia || "0", 10);
     const mediaUrl: string | undefined = req.body.MediaUrl0;
     const mediaType: string | undefined = req.body.MediaContentType0;
 
-    console.log(`From: ${from} | Media: ${numMedia} | Type: ${mediaType}`);
+    log("INFO", "webhook_received", { reqId, from, numMedia, mediaType });
 
-    // No attachment sent
     if (numMedia === 0 || !mediaUrl || !mediaType) {
+      log("INFO", "no_media", { reqId, from });
       await sendWhatsAppMessage(from, buildNonMediaMessage());
       return;
     }
 
-    // Unsupported file type
     const isSupported = SUPPORTED_TYPES.some((t) =>
       mediaType.toLowerCase().includes(t.split("/")[1])
     );
     if (!isSupported) {
+      log("WARN", "unsupported_type", { reqId, from, mediaType });
       await sendWhatsAppMessage(from, buildUnsupportedFileMessage(mediaType));
       return;
     }
 
-    // Let the user know we are working on it
     const isPdf = mediaType.includes("pdf");
+    log("INFO", "processing_start", { reqId, from, contentType: isPdf ? "document" : "image" });
     await sendWhatsAppMessage(
       from,
       isPdf ? "Reading your PDF... ⏳" : "Reading your photo... ⏳"
     );
 
-    // Parse with Claude
     const result = await parseMediaToEvents(
       mediaUrl,
       mediaType,
       process.env.TWILIO_ACCOUNT_SID!,
-      process.env.TWILIO_AUTH_TOKEN!
+      process.env.TWILIO_AUTH_TOKEN!,
+      reqId
     );
 
     if (result.error && result.events.length === 0) {
+      log("WARN", "parse_failed", { reqId, error: result.error });
       await sendWhatsAppMessage(from, buildErrorMessage());
       return;
     }
 
-    await sendWhatsAppMessage(from, buildReplyMessage(result.events));
+    const chunks = buildReplyMessage(result.events);
+    for (const chunk of chunks) {
+      await sendWhatsAppMessage(from, chunk);
+    }
+    log("INFO", "whatsapp_sent", { reqId, to: from, eventCount: result.events.length, chunks: chunks.length });
 
   } catch (error) {
-    console.error("Webhook error:", error);
+    log("ERROR", "webhook_error", { reqId, message: String(error) });
     try {
       await sendWhatsAppMessage(req.body.From, buildErrorMessage());
     } catch {
@@ -84,7 +93,5 @@ app.post("/webhook", async (req: Request, res: Response) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`FamilyBrief bot running on port ${PORT}`);
-  console.log(`Webhook: http://localhost:${PORT}/webhook`);
-  console.log(`Health: http://localhost:${PORT}/health`);
+  log("INFO", "server_start", { port: PORT, webhook: `http://localhost:${PORT}/webhook` });
 });
